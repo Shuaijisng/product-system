@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 安装必要的系统库（仅必需的，不安装 fonts-noto-cjk，使用项目自带字体）
+# 安装必要的系统库
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6 \
     fontconfig \
@@ -31,5 +31,5 @@ RUN mkdir -p /app/uploads/images /app/uploads/pending_images /app/exports /app/d
 # 暴露端口
 EXPOSE 5000
 
-# 使用Gunicorn启动生产服务器
-CMD ["gunicorn", "-w", "1", "-k", "gevent", "--worker-connections", "500", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "app:app"]
+# 使用Gunicorn启动生产服务器（sync worker，简单稳定）
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "app:app"]
