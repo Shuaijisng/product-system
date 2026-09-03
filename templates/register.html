@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 产品信息管理系统</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .login-header {
+            margin-bottom: 30px;
+        }
+
+        .login-header h1 {
+            font-size: 1.8rem;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="glass-card login-card">
+        <div class="login-header">
+            <h1>创建新账号</h1>
+            <p style="color: var(--text-secondary);">注册后默认为只读权限</p>
+        </div>
+
+        <form id="register-form">
+            <div class="form-group" style="text-align: left;">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" class="form-input" required placeholder="请设置用户名">
+            </div>
+
+            <div class="form-group" style="text-align: left;">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" class="form-input" required placeholder="请设置密码">
+            </div>
+
+            <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">注册</button>
+            <div id="result" class="result mt-4" style="display:none; padding: 10px; border-radius: 6px;"></div>
+        </form>
+
+        <div style="margin-top: 20px; font-size: 0.9rem; color: var(--text-secondary);">
+            已有账号？ <a href="/login" style="color: var(--primary-color); font-weight: 600;">直接登录</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('register-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const resultDiv = document.getElementById('result');
+            const submitBtn = this.querySelector('button[type="submit"]');
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="fa fa-spinner fa-spin"></span> 注册中...';
+
+            try {
+                const response = await fetch('/register', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.background = '#d1fae5';
+                    resultDiv.style.color = '#065f46';
+                    resultDiv.innerHTML = '✅ 注册成功，正在跳转登录页面...';
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 1500);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.style.background = '#fee2e2';
+                resultDiv.style.color = '#991b1b';
+                resultDiv.innerHTML = `❌ ${error.message}`;
+            } finally {
+                if (!resultDiv.innerHTML.includes('成功')) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '注册';
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

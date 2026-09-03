@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品详情 - {{ product.code }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <!-- Back button icon -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="glass-card detail-card">
+            <div class="detail-header">
+                <div class="detail-code">{{ product.code }}</div>
+                <div class="detail-meta">创建时间：{{ product.created_at }}</div>
+            </div>
+
+            <div class="content">
+                {% if product.text_info %}
+                <div class="detail-content">
+                    {{ product.text_info }}
+                </div>
+                {% endif %}
+
+                {% if product.extra_fields %}
+                <div class="extra-fields mb-4">
+                    {% for field_name, field_value in product.extra_fields.items() %}
+                    <div class="product-item"
+                        style="background: rgba(248, 250, 252, 0.5); border-left: 4px solid var(--primary-color);">
+                        <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 4px;">{{ field_name }}
+                        </div>
+                        <div style="color: var(--text-secondary);">{{ field_value }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if product.image_path %}
+                <div class="text-center detail-image mb-4">
+                    <img src="{{ url_for('uploaded_file', filename=product.image_path) }}" alt="产品图片"
+                        style="max-width: 100%; height: auto;">
+                </div>
+                {% endif %}
+
+                {% if not product.text_info and not product.extra_fields and not product.image_path %}
+                <div class="text-center" style="padding: 40px; color: var(--text-light);">该产品暂无详细信息</div>
+                {% endif %}
+            </div>
+
+            <div class="action-bar">
+                <a href="/" class="btn btn-secondary" style="width: auto;">← 返回首页</a>
+                <button class="btn" style="width: auto;" onclick="exportAsPDF()">保存为PDF</button>
+                <button class="btn" style="width: auto;" onclick="exportAsImage()">保存为图片</button>
+                <button class="btn btn-secondary" style="width: auto;" onclick="showShareLink()">分享链接</button>
+            </div>
+
+            <div class="glass-card mt-4 hidden" id="shareLinkContainer" style="background: rgba(255,255,255,0.9);">
+                <div style="font-weight: 600; margin-bottom: 10px; color: var(--primary-color);">🔗 产品分享链接：</div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" class="form-input" id="shareLinkInput" readonly>
+                    <button class="btn" style="width: auto; padding: 10px 20px;" onclick="copyShareLink()">复制</button>
+                </div>
+                <div class="success-message mt-2" id="copySuccess"
+                    style="color: var(--success); font-size: 0.9rem; display: none;">✅ 链接已复制到剪贴板！</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function exportAsPDF() {
+            const code = '{{ product.code }}';
+            window.location.href = `/api/products/${code}/export/pdf`;
+        }
+
+        function exportAsImage() {
+            const code = '{{ product.code }}';
+            window.location.href = `/api/products/${code}/export/image`;
+        }
+
+        function showShareLink() {
+            const code = '{{ product.code }}';
+            const container = document.getElementById('shareLinkContainer');
+
+            if (!container.classList.contains('hidden')) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            // 获取分享链接
+            fetch(`/api/products/${code}/share-link`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('shareLinkInput').value = data.share_url;
+                        container.classList.remove('hidden');
+                    } else {
+                        alert('获取分享链接失败：' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('获取分享链接失败');
+                });
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('shareLinkInput');
+            input.select();
+            input.setSelectionRange(0, 99999); // 对于移动设备
+
+            try {
+                document.execCommand('copy');
+                const successMsg = document.getElementById('copySuccess');
+                successMsg.style.display = 'block';
+                setTimeout(() => {
+                    successMsg.style.display = 'none';
+                }, 2000);
+            } catch (err) {
+                alert('复制失败，请手动选择并复制链接');
+            }
+        }
+    </script>
+</body>
+
+</html>

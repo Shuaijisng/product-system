@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品信息管理系统</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <!-- Optional: FontAwesome -->
+</head>
+
+<body>
+    <div class="container">
+        <div class="header"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            <div>
+                <h1 style="color: var(--primary-color); font-size: 1.8rem; margin-bottom: 5px;">产品信息管理系统</h1>
+                <p style="color: var(--text-secondary); font-size: 0.95rem;">录入产品信息，生成专属访问链接</p>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div class="user-profile-card"
+                    style="display: flex; align-items: center; background: white; padding: 6px 16px 6px 6px; border-radius: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03);">
+                    <a href="/logout" title="点击退出登录" onclick="return confirm('确定要退出登录吗？');"
+                        style="text-decoration: none;">
+                        <div
+                            style="width: 36px; height: 36px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--primary-color); margin-right: 10px; font-weight: bold; font-size: 1.1rem; transition: background 0.2s;">
+                            {{ user.username[0] | upper }}
+                        </div>
+                    </a>
+                    <div style="margin-right: 12px; text-align: left;">
+                        <div style="font-weight: 600; font-size: 0.9rem; color: #334155;">{{ user.username }}</div>
+                        <div style="font-size: 0.75rem; color: #94a3b8;">
+                            {{ '管理员' if user.is_admin else '普通用户' }}
+                        </div>
+                    </div>
+
+                    {% if user.is_admin %}
+                    <a href="/admin" title="管理后台"
+                        style="color: #64748b; margin-right: 12px; transition: color 0.2s; display: flex; align-items: center; text-decoration: none; font-size: 0.85rem;"
+                        onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='#64748b'">
+                        <i class="fas fa-cog" style="font-size: 1rem; margin-right: 4px;"></i>
+                        <span style="font-weight: 500;">管理后台</span>
+                    </a>
+                    <div style="width: 1px; height: 20px; background: #e2e8f0; margin: 0 8px;"></div>
+                    {% else %}
+                    <div style="width: 1px; height: 20px; background: #e2e8f0; margin: 0 8px;"></div>
+                    {% endif %}
+
+                    <a href="javascript:void(0)" onclick="openProfileModal()" title="个人设置"
+                        style="color: #64748b; margin-right: 12px; transition: color 0.2s; display: flex; align-items: center; text-decoration: none; font-size: 0.85rem;"
+                        onmouseover="this.style.color='#0ea5e9'" onmouseout="this.style.color='#64748b'">
+                        <i class="fas fa-user-edit" style="font-size: 1rem; margin-right: 4px;"></i>
+                        <span style="font-weight: 500;">账户</span>
+                    </a>
+
+                    <div style="width: 1px; height: 20px; background: #e2e8f0; margin: 0 8px;"></div>
+
+                    <a href="/logout" title="退出登录"
+                        style="color: #ef4444; display: flex; align-items: center; text-decoration: none; font-size: 0.85rem;"
+                        onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+                        <i class="fas fa-sign-out-alt" style="font-size: 1.0rem; margin-right: 4px;"></i>
+                        <span style="font-weight: 500;">退出登录</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            {% if user.can_upload %}
+            <button class="tab-btn active" onclick="switchTab('manual')">手动录入</button>
+            <button class="tab-btn" onclick="switchTab('excel')">Excel导入</button>
+            <button class="tab-btn" onclick="switchTab('images')">批量上传图片</button>
+            {% endif %}
+            <button class="tab-btn {{ 'active' if not user.can_upload else '' }}"
+                onclick="switchTab('list')">产品列表</button>
+            <button class="tab-btn" onclick="switchTab('imagelist')">图片列表</button>
+        </div>
+
+        <div class="glass-card">
+            <div class="glass-card">
+                <!-- 手动录入 -->
+                {% if user.can_upload %}
+                <div id="manual-tab" class="tab-content active">
+                    <h2 class="mb-4" style="color: var(--primary-color);">手动录入产品信息</h2>
+                    <form id="product-form">
+                        <div class="form-group">
+                            <label for="code">款号 *</label>
+                            <input type="text" id="code" name="code" class="form-input" required
+                                placeholder="请输入款号，如：ABC001">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="text_info">文字信息（可选）</label>
+                            <textarea id="text_info" name="text_info" class="form-textarea" placeholder="请输入产品描述、规格等信息"
+                                rows="5"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>图片信息（可选）</label>
+                            <div class="file-upload">
+                                <input type="file" id="image" name="image" accept="image/*"
+                                    style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer; z-index: 10;">
+                                <label for="image" class="file-upload-label" id="file-label">
+                                    <div class="upload-icon">📷</div>
+                                    <span>点击或拖拽上传图片</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn">提交并生成链接</button>
+
+                        <div id="result" class="result mt-4" style="display:none; padding: 15px; border-radius: 8px;">
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- Excel导入 -->
+                {% if user.can_upload %}
+                <div id="excel-tab" class="tab-content hidden">
+                    <h2 class="mb-4" style="color: var(--primary-color);">Excel批量导入</h2>
+                    <form id="excel-form">
+                        <div class="form-group">
+                            <label>Excel文件</label>
+                            <div class="file-upload">
+                                <input type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls"
+                                    style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer; z-index: 10;">
+                                <label for="excel_file" class="file-upload-label" id="excel-label">
+                                    <div class="upload-icon">📊</div>
+                                    <span>点击选择Excel文件</span>
+                                </label>
+                            </div>
+                            <div class="mt-4"
+                                style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 8px; font-size: 0.9rem; color: var(--text-secondary);">
+                                <strong style="display: block; margin-bottom: 8px;">📑 导入说明：</strong>
+                                <ul style="padding-left: 20px; list-style-type: disc;">
+                                    <li>第一列必须是"款号"或"code"</li>
+                                    <li>从第二列开始，所有列都会根据表头名称动态显示</li>
+                                    <li>例如：第二列是"价格"，第三列是"颜色"，都会在产品详情页显示</li>
+                                    <li>只有有数据的列才会显示，空列不显示</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn">导入数据</button>
+
+                        <div id="excel-result" class="result mt-4 hidden"></div>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- 批量上传图片 -->
+                {% if user.can_upload %}
+                <div id="images-tab" class="tab-content hidden">
+                    <h2 class="mb-4" style="color: var(--primary-color);">批量上传图片</h2>
+                    <form id="images-form">
+                        <div class="form-group">
+                            <label>批量上传图片</label>
+                            <div class="file-upload">
+                                <input type="file" id="images-upload" name="images" accept="image/*" multiple
+                                    style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer; z-index: 10;">
+                                <label for="images-upload" class="file-upload-label" id="images-upload-label">
+                                    <div class="upload-icon">🖼️</div>
+                                    <span>点击选择多个图片文件（支持多选）</span>
+                                </label>
+                            </div>
+                            <div class="mt-4"
+                                style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 8px; font-size: 0.9rem; color: var(--text-secondary);">
+                                <strong style="display: block; margin-bottom: 8px;">ℹ️ 上传说明：</strong>
+                                <ul style="padding-left: 20px; list-style-type: disc;">
+                                    <li>图片文件名必须是产品的款号（不含扩展名）</li>
+                                    <li>例如：款号为"ABC001"的产品，图片文件名应为"ABC001.jpg"</li>
+                                    <li>系统会自动匹配已有产品并更新图片</li>
+                                    <li>如果产品不存在，图片会保存待匹配，下次导入新产品时会自动匹配</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn">上传图片</button>
+
+                        <div id="images-result" class="result mt-4 hidden"></div>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- 产品列表 -->
+                <div id="list-tab" class="tab-content {{ 'hidden' if user.can_upload else 'active' }}">
+                    <h2 class="mb-4" style="color: var(--primary-color);">产品列表</h2>
+
+                    <!-- 搜索和操作栏 -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <input type="text" id="search-input" placeholder="🔍 搜索款号或文字信息..." class="form-input">
+                        </div>
+                        <button id="search-btn" class="btn" style="width: auto;">搜索</button>
+                        {% if user.can_delete %}
+                        <button id="delete-selected-btn" class="btn"
+                            style="width: auto; background-color: var(--danger); display: none;">
+                            删除选中 (<span id="selected-count">0</span>)
+                        </button>
+                        <button id="delete-all-products-btn" class="btn"
+                            style="width: auto; background-color: #ef4444; margin-left: auto;">
+                            删除全部产品
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <!-- 全选控制 -->
+                    <div
+                        style="margin-bottom: 15px; padding: 12px; background: rgba(248, 250, 252, 0.8); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+                        <label
+                            style="display: flex; align-items: center; cursor: pointer; margin: 0; color: var(--text-secondary);">
+                            <input type="checkbox" id="select-all"
+                                style="width: 18px; height: 18px; margin-right: 8px; cursor: pointer;">
+                            <span style="font-weight: 500;">全选</span>
+                        </label>
+                        <span id="total-count" style="color: var(--text-light); margin-left: auto; font-size: 0.9rem;">共
+                            0
+                            条</span>
+                    </div>
+
+                    <!-- 已选款号 + 导出 -->
+                    <div id="selected-panel"
+                        style="margin-bottom: 15px; padding: 12px; background: rgba(243, 244, 246, 0.8); border-radius: 8px; display: none; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid #e5e7eb;">
+                        <div style="font-weight: 600; color: var(--primary-color);">已选款号：</div>
+                        <div id="selected-codes" style="flex: 1; display: flex; flex-wrap: wrap;"></div>
+                        <button id="clear-selected-btn" class="btn btn-secondary"
+                            style="width: auto; padding: 8px 16px;">清空</button>
+                        <button id="export-pdf-btn" class="btn" style="width: auto; padding: 8px 16px;">生成PDF</button>
+                    </div>
+
+                    <div id="products-list" class="products-list">
+                        <p class="text-center" style="color: var(--text-light); padding: 40px;">加载中...</p>
+                    </div>
+                    <!-- 产品列表分页 -->
+                    <div id="product-pagination" class="pagination"
+                        style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;"></div>
+                </div>
+
+                <!-- 图片列表 -->
+                <div id="imagelist-tab" class="tab-content hidden">
+                    <h2 class="mb-4" style="color: var(--primary-color);">图片列表</h2>
+
+                    <!-- 操作栏 -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                        <button id="refresh-images-btn" class="btn btn-secondary" style="width: auto;">刷新列表</button>
+                        {% if user.can_delete %}
+                        <button id="delete-selected-images-btn" class="btn"
+                            style="width: auto; background-color: var(--danger); display: none;">
+                            删除选中 (<span id="selected-images-count">0</span>)
+                        </button>
+                        <button id="delete-all-images-btn" class="btn"
+                            style="width: auto; background-color: #ef4444; margin-left: auto;">
+                            删除全部图片
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <!-- 全选控制 -->
+                    <div
+                        style="{{ 'display: none;' if not user.can_delete else '' }} margin-bottom: 15px; padding: 12px; background: rgba(248, 250, 252, 0.8); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+                        <label
+                            style="display: flex; align-items: center; cursor: pointer; margin: 0; color: var(--text-secondary);">
+                            <input type="checkbox" id="select-all-images"
+                                style="width: 18px; height: 18px; margin-right: 8px; cursor: pointer;">
+                            <span style="font-weight: 500;">全选</span>
+                        </label>
+                        <span id="total-images-count"
+                            style="color: var(--text-light); margin-left: auto; font-size: 0.9rem;">共 0 张</span>
+                    </div>
+
+                    <div id="images-list" class="products-list">
+                        <p class="text-center" style="color: var(--text-light); padding: 40px;">加载中...</p>
+                    </div>
+                    <!-- 图片列表分页 -->
+                    <div id="image-pagination" class="pagination"
+                        style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Tab Switching Logic
+            let currentSearch = '';
+            let currentPage = 1;
+            let selectedProducts = new Set();
+            let currentImagePage = 1;
+            let selectedImages = new Set();
+
+            function switchTab(tab) {
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('hidden');
+                    content.classList.remove('active');
+                });
+
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+
+                document.getElementById(tab + '-tab').classList.remove('hidden');
+                document.getElementById(tab + '-tab').classList.add('active');
+
+                const buttons = document.querySelectorAll('.tab-btn');
+                for (let btn of buttons) {
+                    if (btn.getAttribute('onclick') === `switchTab('${tab}')`) {
+                        btn.classList.add('active');
+                        break;
+                    }
+                }
+
+                if (tab === 'list') {
+                    document.getElementById('search-input').value = currentSearch;
+                    loadProducts(currentSearch, currentPage);
+                }
+
+                if (tab === 'imagelist') {
+                    loadImages(currentImagePage);
+                }
+            }
+
+            // --- File Input Handling ---
+            function handleFileInput(inputId, labelId, defaultText) {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+                input.addEventListener('change', function (e) {
+                    const label = document.getElementById(labelId);
+                    const span = label.querySelector('span');
+                    const icon = label.querySelector('.upload-icon');
+
+                    if (e.target.files.length > 0) {
+                        label.classList.add('has-file');
+                        let text = `已选择: ${e.target.files[0].name}`;
+                        if (e.target.files.length > 1) {
+                            text = `已选择 ${e.target.files.length} 个文件`;
+                        }
+                        span.textContent = text;
+                        icon.textContent = '✅';
+                    } else {
+                        label.classList.remove('has-file');
+                        span.textContent = defaultText;
+                        icon.textContent = inputId === 'images-upload' ? '🖼️' : (inputId === 'excel_file' ? '📊' : '📷');
+                    }
+                });
+            }
+            handleFileInput('image', 'file-label', '点击或拖拽上传图片');
+            handleFileInput('excel_file', 'excel-label', '点击选择Excel文件');
+            handleFileInput('images-upload', 'images-upload-label', '点击选择多个图片文件（支持多选）');
+
+            // --- Form Submissions ---
+            document.getElementById('product-form').addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const resultDiv = document.getElementById('result');
+                const submitBtn = this.querySelector('button[type="submit"]');
+
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="fa fa-spinner fa-spin"></span> 提交中...';
+
+                try {
+                    const response = await fetch('/api/products', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    resultDiv.style.display = 'block';
+                    if (response.ok) {
+                        resultDiv.className = 'result mt-4';
+                        resultDiv.style.background = '#d1fae5';
+                        resultDiv.style.color = '#065f46';
+                        resultDiv.innerHTML = `<strong>✅ 成功！</strong> ${data.message}
+                        <div class="mt-4 p-3 bg-white rounded border border-green-200">
+                            <strong>🔗 访问链接：</strong><br>
+                            <a href="${data.view_url}" target="_blank" style="color: var(--primary-color); word-break: break-all;">${data.view_url}</a>
+                        </div>`;
+                        this.reset();
+                        const label = document.getElementById('file-label');
+                        label.classList.remove('has-file');
+                        label.querySelector('span').textContent = '点击或拖拽上传图片';
+                        label.querySelector('.upload-icon').textContent = '📷';
+                    } else {
+                        throw new Error(data.error || '未知错误');
+                    }
+                } catch (error) {
+                    resultDiv.className = 'result mt-4';
+                    resultDiv.style.background = '#fee2e2';
+                    resultDiv.style.color = '#991b1b';
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<strong>❌ 错误！</strong> ${error.message}`;
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '提交并生成链接';
+                }
+            });
+
+            document.getElementById('excel-form').addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const resultDiv = document.getElementById('excel-result');
+                const submitBtn = this.querySelector('button[type="submit"]');
+
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="fa fa-spinner fa-spin"></span> 导入中...';
+
+                try {
+                    const response = await fetch('/api/products/excel', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    resultDiv.classList.remove('hidden');
+                    if (response.ok) {
+                        resultDiv.style.background = '#d1fae5';
+                        resultDiv.style.color = '#065f46';
+                        let errorHtml = '';
+                        if (data.errors && data.errors.length > 0) {
+                            errorHtml = '<br><strong class="block mt-2">⚠️ 部分错误：</strong><ul class="pl-4 mt-1">';
+                            data.errors.forEach(err => errorHtml += `<li>${err}</li>`);
+                            errorHtml += '</ul>';
+                        }
+                        resultDiv.innerHTML = `<strong>✅ 成功！</strong> ${data.message}${errorHtml}`;
+                        this.reset();
+                        const label = document.getElementById('excel-label');
+                        label.classList.remove('has-file');
+                        label.querySelector('span').textContent = '点击选择Excel文件';
+                        label.querySelector('.upload-icon').textContent = '📊';
+                    } else {
+                        throw new Error(data.error);
+                    }
+                } catch (error) {
+                    resultDiv.classList.remove('hidden');
+                    resultDiv.style.background = '#fee2e2';
+                    resultDiv.style.color = '#991b1b';
+                    resultDiv.innerHTML = `<strong>❌ 错误！</strong> ${error.message}`;
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '导入数据';
+                }
+            });
+
+            document.getElementById('images-form').addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const resultDiv = document.getElementById('images-result');
+                const submitBtn = this.querySelector('button[type="submit"]');
+
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="fa fa-spinner fa-spin"></span> 上传中...';
+
+                try {
+                    const response = await fetch('/api/images/upload', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    resultDiv.classList.remove('hidden');
+                    if (response.ok) {
+                        resultDiv.style.background = '#d1fae5';
+                        resultDiv.style.color = '#065f46';
+                        let errorHtml = '';
+                        if (data.errors && data.errors.length > 0) {
+                            errorHtml = '<br><strong>⚠️ 部分错误：</strong><ul style="margin-top: 10px;">';
+                            data.errors.forEach(err => errorHtml += `<li>${err}</li>`);
+                            errorHtml += '</ul>';
+                        }
+                        resultDiv.innerHTML = `<strong>✅ 成功！</strong> ${data.message}${errorHtml}`;
+                        this.reset();
+                        const label = document.getElementById('images-upload-label');
+                        label.classList.remove('has-file');
+                        label.querySelector('span').textContent = '点击选择多个图片文件（支持多选）';
+                        label.querySelector('.upload-icon').textContent = '🖼️';
+                    } else {
+                        throw new Error(data.error || '上传失败');
+                    }
+                } catch (error) {
+                    resultDiv.classList.remove('hidden');
+                    resultDiv.style.background = '#fee2e2';
+                    resultDiv.style.color = '#991b1b';
+                    resultDiv.innerHTML = `<strong>❌ 错误！</strong> ${error.message}`;
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '上传图片';
+                }
+            });
+
+            // --- Product List Functionality ---
+            async function loadProducts(search = '', page = 1) {
+                currentSearch = search;
+                currentPage = page;
+                const listDiv = document.getElementById('products-list');
+                listDiv.innerHTML = '<p class="text-center" style="color: var(--text-light); padding: 40px;"><span class="fa fa-spinner fa-spin"></span> 加载中...</p>';
+
+                try {
+                    const response = await fetch(`/api/products/list?page=${page}&page_size=10&search=${encodeURIComponent(search)}`);
+                    const data = await response.json();
+
+                    document.getElementById('total-count').textContent = `共 ${data.total} 条`;
+
+                    if (data.products.length === 0) {
+                        listDiv.innerHTML = '<div class="text-center" style="padding: 40px; color: var(--text-light);">暂无数据</div>';
+                        document.getElementById('product-pagination').innerHTML = '';
+                        return;
+                    }
+
+                    let html = '';
+                    data.products.forEach(p => {
+                        const isSelected = selectedProducts.has(p.code);
+                        html += `
+                        <div class="product-item ${isSelected ? 'selected' : ''}" data-code="${p.code}" style="${isSelected ? 'background: #eef2ff; border-color: var(--primary-color);' : ''}">
+                            <div style="display: flex; align-items: center; width: 100%;">
+                                <input type="checkbox" class="product-checkbox" ${isSelected ? 'checked' : ''} 
+                                    onchange="toggleProductSelection('${p.code}', this.checked)"
+                                    style="margin-right: 15px; width: 18px; height: 18px;">
+                                
+                                ${p.image_path ?
+                                `<img src="/uploads/${p.image_path}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px; margin-right: 15px;">` :
+                                `<div style="width: 60px; height: 60px; background: #f1f5f9; border-radius: 6px; margin-right: 15px; display: flex; align-items: center; justify-content: center; color: #cbd5e1;">无图</div>`
+                            }
+                                
+                                <div style="flex: 1;">
+                                    <div class="product-code">${p.code}</div>
+                                    <div style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px;">
+                                        ${p.text_info ? (p.text_info.length > 50 ? p.text_info.substring(0, 50) + '...' : p.text_info) : '<span style="color: #9ca3af;">无描述</span>'}
+                                    </div>
+                                </div>
+                                
+                                <a href="${p.view_url}" target="_blank" class="btn btn-secondary" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">查看详情</a>
+                            </div>
+                        </div>
+                    `;
+                    });
+                    listDiv.innerHTML = html;
+                    renderPagination('product-pagination', data.page, Math.ceil(data.total / data.page_size), (p) => loadProducts(currentSearch, p));
+
+                    // Update select all checkbox state
+                    document.getElementById('select-all').checked = data.products.length > 0 && data.products.every(p => selectedProducts.has(p.code));
+
+                } catch (err) {
+                    listDiv.innerHTML = `<div class="text-center" style="color: var(--danger); padding: 20px;">加载失败: ${err.message}</div>`;
+                }
+            }
+
+            // --- Selection Logic ---
+            function toggleProductSelection(code, isSelected) {
+                if (isSelected) selectedProducts.add(code);
+                else selectedProducts.delete(code);
+                updateSelectedPanel();
+
+                // Update UI row style
+                const row = document.querySelector(`.product-item[data-code="${code}"]`);
+                if (row) {
+                    if (isSelected) {
+                        row.style.background = '#eef2ff';
+                        row.style.borderColor = 'var(--primary-color)';
+                    } else {
+                        row.style.background = 'white';
+                        row.style.borderColor = '#f1f5f9';
+                    }
+                }
+                // Check select all status
+                const checkboxes = document.querySelectorAll('#products-list .product-checkbox');
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                document.getElementById('select-all').checked = allChecked && checkboxes.length > 0;
+            }
+
+            function updateSelectedPanel() {
+                const panel = document.getElementById('selected-panel');
+                const deleteBtn = document.getElementById('delete-selected-btn');
+                const countSpan = document.getElementById('selected-count');
+                const codesDiv = document.getElementById('selected-codes');
+
+                countSpan.textContent = selectedProducts.size;
+
+                if (selectedProducts.size > 0) {
+                    panel.style.display = 'flex';
+                    deleteBtn.style.display = 'inline-block';
+
+                    // Show chips
+                    let chipsHtml = '';
+                    let count = 0;
+                    for (let code of selectedProducts) {
+                        if (count > 10) {
+                            chipsHtml += `<span style="color: var(--text-light); margin-left: 5px;">...等 ${selectedProducts.size} 个</span>`;
+                            break;
+                        }
+                        chipsHtml += `
+                        <span style="display: inline-flex; align-items: center; padding: 4px 10px; background: white; border: 1px solid #dcdcdc; border-radius: 16px; margin: 4px; font-size: 0.85rem; color: var(--primary-color);">
+                            ${code}
+                            <span onclick="toggleProductSelection('${code}', false); document.querySelector('.product-item[data-code=\\'${code}\\'] .product-checkbox').checked = false;" style="margin-left: 6px; cursor: pointer; color: #999;">&times;</span>
+                        </span>
+                    `;
+                        count++;
+                    }
+                    codesDiv.innerHTML = chipsHtml;
+                } else {
+                    panel.style.display = 'none';
+                    deleteBtn.style.display = 'none';
+                }
+            }
+
+            document.getElementById('select-all').addEventListener('change', function (e) {
+                const isChecked = e.target.checked;
+                const checkboxes = document.querySelectorAll('#products-list .product-checkbox');
+
+                Array.from(checkboxes).forEach(cb => {
+                    try {
+                        cb.checked = isChecked;
+                        const item = cb.closest('.product-item');
+                        if (item) {
+                            const code = item.getAttribute('data-code');
+                            if (code) {
+                                if (isChecked) selectedProducts.add(code);
+                                else selectedProducts.delete(code);
+
+                                item.style.background = isChecked ? '#eef2ff' : 'white';
+                                item.style.borderColor = isChecked ? 'var(--primary-color)' : '#f1f5f9';
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error selecting item:', err);
+                    }
+                });
+                updateSelectedPanel();
+            });
+
+            document.getElementById('clear-selected-btn').addEventListener('click', function () {
+                selectedProducts.clear();
+                updateSelectedPanel();
+                loadProducts(currentSearch, currentPage); // Reload to clear checkboxes UI
+            });
+
+            document.getElementById('search-btn').addEventListener('click', () => loadProducts(document.getElementById('search-input').value, 1));
+            document.getElementById('search-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') loadProducts(e.target.value, 1);
+            });
+
+            document.getElementById('delete-selected-btn').addEventListener('click', async function () {
+                if (!confirm(`确定要删除选中的 ${selectedProducts.size} 个产品吗？此操作不可恢复！`)) return;
+
+                try {
+                    const response = await fetch('/api/products', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ codes: Array.from(selectedProducts) })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        alert(data.message);
+                        selectedProducts.clear();
+                        updateSelectedPanel();
+                        loadProducts(currentSearch, currentPage);
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                } catch (err) {
+                    alert('删除请求失败');
+                }
+            });
+
+            document.getElementById('export-pdf-btn').addEventListener('click', async function () {
+                if (selectedProducts.size === 0) return;
+
+                // Trigger batch PDF download
+                try {
+                    const response = await fetch('/api/products/export/pdf/batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ codes: Array.from(selectedProducts) })
+                    });
+
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `products_batch_${new Date().toISOString().slice(0, 10)}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        a.remove();
+                    } else {
+                        alert('PDF生成失败');
+                    }
+                } catch (err) {
+                    alert('请求失败: ' + err.message);
+                }
+            });
+
+            // --- Image List Functionality ---
+            async function loadImages(page = 1) {
+                currentImagePage = page;
+                const listDiv = document.getElementById('images-list');
+                listDiv.innerHTML = '<p class="text-center" style="color: var(--text-light); padding: 40px;"><span class="fa fa-spinner fa-spin"></span> 加载中...</p>';
+
+                try {
+                    const response = await fetch(`/api/images/list?page=${page}&page_size=10`);
+                    const data = await response.json();
+
+                    document.getElementById('total-images-count').textContent = `共 ${data.total} 张`;
+
+                    if (data.images.length === 0) {
+                        listDiv.innerHTML = '<div class="text-center" style="padding: 40px; color: var(--text-light);">暂无图片</div>';
+                        document.getElementById('image-pagination').innerHTML = '';
+                        return;
+                    }
+
+                    let html = '';
+                    data.images.forEach(img => {
+                        const isSelected = selectedImages.has(img.path);
+                        const statusBadge = img.status === 'matched'
+                            ? `<span style="background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">已匹配: ${img.used_by_product || '未知'}</span>`
+                            : `<span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">待匹配</span>`;
+
+                        html += `
+                        <div class="product-item ${isSelected ? 'selected' : ''}" data-path="${img.path}" style="border: 1px solid #f1f5f9; padding: 10px; ${isSelected ? 'background: #eef2ff;' : ''}">
+                             <div style="display: flex; align-items: center; width: 100%;">
+                                {% if user.can_delete %}
+                                <input type="checkbox" class="image-checkbox" ${isSelected ? 'checked' : ''} 
+                                    onchange="toggleImageSelection('${img.path}', this.checked)"
+                                    style="margin-right: 15px; width: 18px; height: 18px;">
+                                {% endif %}
+                                <a href="/uploads/${img.path}" target="_blank">
+                                    <img src="/uploads/${img.path}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px; margin-right: 15px;">
+                                </a>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 500; color: var(--primary-color); word-break: break-all;">${img.filename}</div>
+                                    <div style="margin-top: 5px;">${statusBadge}</div>
+                                    <div style="color: #999; font-size: 0.8rem; margin-top: 5px;">${img.created_at} • ${(img.size / 1024).toFixed(1)} KB</div>
+                                </div>
+                             </div>
+                        </div>
+                    `;
+                    });
+                    listDiv.innerHTML = html;
+                    renderPagination('image-pagination', data.page, Math.ceil(data.total / data.page_size), (p) => loadImages(p));
+
+                    // Update select all checkbox state
+                    document.getElementById('select-all-images').checked = data.images.length > 0 && data.images.every(img => selectedImages.has(img.path));
+
+                } catch (err) {
+                    listDiv.innerHTML = `<div class="text-center" style="color: var(--danger); padding: 20px;">加载失败: ${err.message}</div>`;
+                }
+            }
+
+            function toggleImageSelection(path, isSelected) {
+                if (isSelected) selectedImages.add(path);
+                else selectedImages.delete(path);
+
+                // Update UI
+                const row = document.querySelector(`.product-item[data-path="${path}"]`);
+                if (row) {
+                    row.style.background = isSelected ? '#eef2ff' : 'white';
+                }
+
+                // Update delete button
+                const btn = document.getElementById('delete-selected-images-btn');
+                const count = document.getElementById('selected-images-count');
+                count.textContent = selectedImages.size;
+                btn.style.display = selectedImages.size > 0 ? 'inline-block' : 'none';
+
+                // Check select all status
+                const checkboxes = document.querySelectorAll('#images-list .image-checkbox');
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                document.getElementById('select-all-images').checked = allChecked && checkboxes.length > 0;
+            }
+
+            document.getElementById('select-all-images').addEventListener('change', function (e) {
+                const isChecked = e.target.checked;
+                const checkboxes = document.querySelectorAll('#images-list .image-checkbox');
+
+                Array.from(checkboxes).forEach(cb => {
+                    try {
+                        cb.checked = isChecked;
+                        const item = cb.closest('.product-item');
+                        if (item) {
+                            const path = item.getAttribute('data-path');
+                            if (path) {
+                                if (isChecked) selectedImages.add(path);
+                                else selectedImages.delete(path);
+
+                                item.style.background = isChecked ? '#eef2ff' : 'white';
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error selecting image:', err);
+                    }
+                });
+
+                // Update delete button visibility
+                const btn = document.getElementById('delete-selected-images-btn');
+                const count = document.getElementById('selected-images-count');
+                count.textContent = selectedImages.size;
+                btn.style.display = selectedImages.size > 0 ? 'inline-block' : 'none';
+            });
+
+            document.getElementById('refresh-images-btn').addEventListener('click', () => loadImages(currentImagePage));
+
+            document.getElementById('delete-selected-images-btn').addEventListener('click', async function () {
+                if (!confirm(`确定要删除选中的 ${selectedImages.size} 张图片吗？\n如果图片已被产品使用，产品图片将失效！`)) return;
+
+                try {
+                    const response = await fetch('/api/images', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paths: Array.from(selectedImages) })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        alert(data.message);
+                        selectedImages.clear();
+                        document.getElementById('delete-selected-images-btn').style.display = 'none';
+                        loadImages(currentImagePage);
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                } catch (err) {
+                    alert('删除请求失败');
+                }
+            });
+
+            // --- Delete All Functionality ---
+            document.getElementById('delete-all-products-btn').addEventListener('click', async function () {
+                if (!confirm('警告：确定要删除【所有】产品吗？\n\n此操作将清空所有产品数据，并且无法撤销！\n相关的产品图片也会被删除。')) return;
+
+                const doubleCheck = prompt('为了确认您的操作，请输入 "delete"');
+                if (doubleCheck !== 'delete') {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/products/all', {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        alert(data.message);
+                        selectedProducts.clear();
+                        updateSelectedPanel();
+                        loadProducts('', 1);
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                } catch (err) {
+                    alert('删除请求失败: ' + err.message);
+                }
+            });
+
+            document.getElementById('delete-all-images-btn').addEventListener('click', async function () {
+                if (!confirm('警告：确定要删除【所有】图片吗？\n\n此操作将清空所有图片库（包括已匹配和待匹配的），并且无法撤销！\n所有产品的图片关联将失效。')) return;
+
+                const doubleCheck = prompt('为了确认您的操作，请输入 "delete"');
+                if (doubleCheck !== 'delete') {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/images/all', {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        alert(data.message);
+                        selectedImages.clear();
+                        document.getElementById('delete-selected-images-btn').style.display = 'none';
+                        loadImages(1);
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                } catch (err) {
+                    alert('删除请求失败: ' + err.message);
+                }
+            });
+
+            // --- Helper: Pagination ---
+            function renderPagination(elementId, currentPage, totalPages, callback) {
+                const container = document.getElementById(elementId);
+                container.innerHTML = '';
+
+                if (totalPages <= 1) return;
+
+                const createBtn = (text, page, isActive = false, isDisabled = false) => {
+                    const btn = document.createElement('button');
+                    btn.className = `btn btn-secondary ${isActive ? 'active' : ''}`;
+                    btn.style.width = 'auto';
+                    btn.style.padding = '5px 10px';
+                    btn.style.minWidth = '30px';
+                    if (isActive) {
+                        btn.style.background = 'var(--primary-color)';
+                        btn.style.color = 'white';
+                        btn.style.borderColor = 'var(--primary-color)';
+                    }
+                    btn.textContent = text;
+                    btn.disabled = isDisabled;
+                    if (!isDisabled) {
+                        btn.onclick = () => callback(page);
+                    }
+                    container.appendChild(btn);
+                };
+
+                createBtn('<<', 1, false, currentPage === 1);
+                createBtn('<', currentPage - 1, false, currentPage === 1);
+
+                let start = Math.max(1, currentPage - 2);
+                let end = Math.min(totalPages, currentPage + 2);
+
+                for (let i = start; i <= end; i++) {
+                    createBtn(i, i, i === currentPage);
+                }
+
+                createBtn('>', currentPage + 1, false, currentPage === totalPages);
+                createBtn('>>', totalPages, false, currentPage === totalPages);
+            }
+        </script>
+        <!-- Profile Modal -->
+        <div id="profile-modal" class="modal"
+            style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+            <div class="glass-card"
+                style="margin: 10% auto; padding: 30px; border: 1px solid #888; width: 400px; max-width: 90%;">
+                <h2 style="margin-bottom: 20px; color: var(--primary-color);">修改个人信息</h2>
+                <form id="profile-form">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>当前用户名</label>
+                        <input type="text" class="form-input" name="username" value="{{ user.username }}">
+                    </div>
+
+                    <div class="form-group"
+                        style="margin-bottom: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                        <label>修改密码 (留空则不修改)</label>
+                        <input type="password" class="form-input" name="new_password" placeholder="新密码">
+                    </div>
+
+                    <div class="form-group"
+                        style="margin-bottom: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                        <label style="color: var(--danger);">当前密码 (验证身份)</label>
+                        <input type="password" class="form-input" name="current_password" required
+                            placeholder="请输入当前密码以保存更改">
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" class="btn btn-secondary"
+                            onclick="document.getElementById('profile-modal').style.display='none'">取消</button>
+                        <button type="submit" class="btn">保存更改</button>
+                    </div>
+                    <div id="profile-result" class="mt-3"></div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            function openProfileModal() {
+                document.getElementById('profile-modal').style.display = 'block';
+                document.getElementById('profile-result').innerHTML = '';
+                document.getElementById('profile-form').reset();
+                document.querySelector('#profile-form input[name="username"]').value = "{{ user.username }}";
+            }
+
+            // Close modal when clicking outside
+            window.onclick = function (event) {
+                const modal = document.getElementById('profile-modal');
+                if (event.target == modal) {
+                    modal.style.display = "none";
+                }
+            }
+
+            document.getElementById('profile-form').addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = Object.fromEntries(formData.entries());
+                const resultDiv = document.getElementById('profile-result');
+
+                try {
+                    const response = await fetch('/api/user/profile', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const res = await response.json();
+
+                    if (response.ok) {
+                        resultDiv.innerHTML = '<div style="color: var(--success);">✅ 更新成功！请重新登录...</div>';
+                        setTimeout(() => window.location.href = '/logout', 1500);
+                    } else {
+                        resultDiv.innerHTML = `<div style="color: var(--danger);">❌ ${res.error}</div>`;
+                    }
+                } catch (err) {
+                    resultDiv.innerHTML = `<div style="color: var(--danger);">❌ 请求失败: ${err.message}</div>`;
+                }
+            });
+        </script>
+</body>
+
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统管理后台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <style>
+        .admin-section {
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .user-table th,
+        .user-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .user-table th {
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: #f8fafc;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(20px);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .badge-admin {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-user {
+            background: #e0f2fe;
+            color: #075985;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="admin-header">
+            <div>
+                <h1 style="margin:0;">系统管理后台</h1>
+                <p style="color: var(--text-secondary); margin: 5px 0 0;">管理用户权限及系统设置</p>
+            </div>
+            <div>
+                <a href="/" class="btn btn-secondary">返回首页</a>
+                <a href="/logout" class="btn" style="background:#ef4444;">退出登录</a>
+            </div>
+        </div>
+
+        <!-- 系统设置 -->
+        <div class="admin-section">
+            <h2 class="mb-4" style="font-size: 1.25rem;">⚙️ 系统设置</h2>
+            <div
+                style="display: flex; align-items: center; justify-content: space-between; max-width: 400px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+                <div>
+                    <strong>开放注册</strong>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">允许新用户在登录界面注册账号</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-registration" onchange="updateSettings(this.checked)">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <div class="admin-section">
+            <h2 class="mb-4" style="font-size: 1.25rem;">👥 用户管理</h2>
+            <div style="overflow-x: auto;">
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>角色</th>
+                            <th>注册时间</th>
+                            <th>权限设置</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-list-body">
+                        <tr>
+                            <td colspan="6" class="text-center p-4">加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', loadData);
+
+        async function loadData() {
+            try {
+                const response = await fetch('/api/admin/users');
+                if (!response.ok) {
+                    if (response.status === 403) window.location.href = '/login';
+                    throw new Error('加载失败');
+                }
+                const data = await response.json();
+
+                // Update settings
+                document.getElementById('toggle-registration').checked = data.settings.allow_registration;
+
+                // Render users
+                renderUsers(data.users);
+            } catch (err) {
+                console.error(err);
+                alert('数据加载失败: ' + err.message);
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('user-list-body');
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center p-4">暂无用户</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => {
+                const isAdmin = user.role === 'admin';
+                const canUpload = user.permissions.can_upload;
+                const canDelete = user.permissions.can_delete;
+
+                return `
+                    <tr data-id="${user.id}">
+                        <td>${user.id}</td>
+                        <td style="font-weight: 500;">${user.username}</td>
+                        <td>
+                            <span class="badge ${isAdmin ? 'badge-admin' : 'badge-user'}">
+                                ${isAdmin ? '管理员' : '普通用户'}
+                            </span>
+                        </td>
+                        <td style="color: var(--text-secondary); font-size: 0.9rem;">${user.created_at}</td>
+                        <td>
+                            ${isAdmin ? '<span style="color:#999;">最高权限</span>' : `
+                                <div style="display: flex; gap: 15px;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="checkbox" ${canUpload ? 'checked' : ''} onchange="updateUserPerms(${user.id}, 'can_upload', this.checked)">
+                                        <span style="margin-left: 6px; font-size: 0.9rem;">允许上传/修改</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="checkbox" ${canDelete ? 'checked' : ''} onchange="updateUserPerms(${user.id}, 'can_delete', this.checked)">
+                                        <span style="margin-left: 6px; font-size: 0.9rem;">允许删除</span>
+                                    </label>
+                                </div>
+                            `}
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                <button onclick="openEditUserModal(${user.id}, '${user.username}')" class="btn btn-secondary" style="width: auto; padding: 4px 10px; font-size: 0.8rem;">
+                                    编辑
+                                </button>
+                                ${isAdmin ? '' : `
+                                    <button onclick="deleteUser(${user.id}, '${user.username}')" class="btn" style="background:var(--danger); width: auto; padding: 4px 10px; font-size: 0.8rem;">
+                                        删除
+                                    </button>
+                                `}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function updateSettings(allow) {
+            try {
+                await fetch('/api/admin/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'allow_registration', value: allow })
+                });
+            } catch (err) {
+                alert('设置更新失败');
+                loadData(); // revert
+            }
+        }
+
+        async function updateUserPerms(userId, permType, isChecked) {
+            try {
+                // Get current perms from UI logic is tricky, better to fetch fresh data usually, 
+                // but let's assume we maintain state or optimistic update.
+                // We need to send full permissions object or backend needs to handle partial.
+                // My backend implementation overwrites permissions: `new_permissions = json.dumps(data.get('permissions', {}))`
+                // So I need to read the OTHER checkbox state to send both.
+
+                const row = document.querySelector(`tr[data-id="${userId}"]`);
+                const canUpload = row.querySelector(`input[onchange*="'can_upload'"]`).checked;
+                const canDelete = row.querySelector(`input[onchange*="'can_delete'"]`).checked;
+
+                const permissions = {
+                    can_upload: canUpload,
+                    can_delete: canDelete
+                };
+
+                const res = await fetch(`/api/admin/users/${userId}/permissions`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permissions: permissions })
+                });
+
+                if (!res.ok) throw new Error('Failed');
+
+            } catch (err) {
+                alert('权限更新失败');
+                loadData(); // revert
+            }
+        }
+
+        async function deleteUser(userId, username) {
+            if (!confirm(`确定要删除用户 "${username}" 吗？此操作无法撤销！`)) return;
+
+            try {
+                const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    loadData();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (err) {
+                alert('请求失败');
+            }
+        }
+    </script>
+
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal"
+        style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+        <div class="glass-card admin-section"
+            style="margin: 10% auto; padding: 30px; border: 1px solid #888; width: 400px; max-width: 90%; background: white;">
+            <h2 style="margin-bottom: 20px; color: var(--primary-color);">编辑用户</h2>
+            <form id="edit-user-form">
+                <input type="hidden" name="user_id">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">用户名</label>
+                    <input type="text" class="form-input" name="username"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">重置密码 (留空则不修改)</label>
+                    <input type="password" class="form-input" name="password" placeholder="输入新密码"
+                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('edit-user-modal').style.display='none'">取消</button>
+                    <button type="submit" class="btn">保存</button>
+                </div>
+                <div id="edit-result" class="mt-3" style="margin-top: 10px;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openEditUserModal(id, username) {
+            const modal = document.getElementById('edit-user-modal');
+            modal.style.display = 'block';
+            document.getElementById('edit-result').innerHTML = '';
+
+            const form = document.getElementById('edit-user-form');
+            form.reset();
+            form.querySelector('input[name="user_id"]').value = id;
+            form.querySelector('input[name="username"]').value = username;
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            const modal = document.getElementById('edit-user-modal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        document.getElementById('edit-user-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const userId = formData.get('user_id');
+            const data = {
+                username: formData.get('username'),
+                password: formData.get('password')
+            };
+
+            const resultDiv = document.getElementById('edit-result');
+
+            try {
+                const response = await fetch(`/api/admin/users/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const res = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = '<div style="color: var(--success);">✅ 更新成功！</div>';
+                    setTimeout(() => {
+                        document.getElementById('edit-user-modal').style.display = 'none';
+                        loadData(); // Refresh table
+                    }, 1000);
+                } else {
+                    resultDiv.innerHTML = `<div style="color: var(--danger);">❌ ${res.error}</div>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<div style="color: var(--danger);">❌ 请求失败: ${err.message}</div>`;
+            }
+        });
+    </script>
+</body>
+
+</html>

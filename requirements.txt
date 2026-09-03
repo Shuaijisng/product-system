@@ -1,0 +1,8 @@
+flask
+pandas
+openpyxl
+reportlab
+pillow
+Flask-Login
+gunicorn
+gevent

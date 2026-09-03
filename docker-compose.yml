@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: product_system
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads # 挂载上传目录，持久化图片
+      - ./data:/app/data # 挂载数据目录，持久化数据库
+      - ./exports:/app/exports # 挂载导出目录
+      # - ./fonts:/app/fonts         # 如果需要自定义额外字体，可以取消注释
+    environment:
+      - TZ=Asia/Shanghai
+    # 如果生产环境需要更强的密钥，可以在这里覆盖
+    # - SECRET_KEY=your_secure_random_key_here
+    # 健康检查：自动重启不健康的容器
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:5000/login || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # 内存限制，防止 OOM
+    deploy:
+      resources:
+        limits:
+          memory: 800M
