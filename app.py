@@ -191,6 +191,9 @@ def match_pending_image(code):
                     print(f'移动待匹配图片失败: {e}')
                     return None
     
+    except Exception as e:
+        print(f'遍历待匹配目录失败: {e}')
+    
     return None
 
 def match_existing_image(code):
