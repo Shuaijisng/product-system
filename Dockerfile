@@ -31,5 +31,5 @@ RUN mkdir -p /app/uploads/images /app/uploads/pending_images /app/exports /app/d
 # 暴露端口
 EXPOSE 5000
 
-# 使用Gunicorn启动生产服务器（sync worker，简单稳定）
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "app:app"]
+# 使用Gunicorn启动生产服务器（sync worker，适合中等负载）
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:5000", "--timeout", "300", "--access-logfile", "-", "app:app"]

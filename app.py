@@ -19,12 +19,11 @@ import base64
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
-
 # 数据库路径配置
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'products.db')
 
 app = Flask(__name__)
-# 上传目录放到 data 下面，方便只挂载一个 Volume
+# 将上传目录移至 data 目录下，便于单一 Volume 挂载
 app.config['DATA_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 app.config['UPLOAD_FOLDER'] = os.path.join(app.config['DATA_FOLDER'], 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
@@ -70,7 +69,7 @@ class User(UserMixin):
     @property
     def can_delete(self):
         return self.role == 'admin' or self.permissions.get('can_delete', False)
-    
+
     @property
     def is_admin(self):
         return self.role == 'admin'
@@ -93,84 +92,12 @@ def load_user(user_id):
         return User(id=user_data[0], username=user_data[1], role=user_data[2], permissions=permissions)
     return None
 
-# 确保所有必要目录存在（都在 data 目录下）
-os.makedirs(app.config['DATA_FOLDER'], exist_ok=True)
+# 确保上传目录存在
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'images'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'pending_images'), exist_ok=True)
 os.makedirs(app.config['EXPORT_FOLDER'], exist_ok=True)
-
-# 注册中文字体（用于PDF生成）
-_chinese_font_registered = False
-
-def register_chinese_font():
-    """注册中文字体"""
-    global _chinese_font_registered
-    if _chinese_font_registered:
-        return True
-
-    try:
-        # 优先查找当前目录下的fonts文件夹
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        local_font_paths = [
-            os.path.join(current_dir, 'fonts', 'SimHei.ttf'),
-            os.path.join(current_dir, 'fonts', 'simhei.ttf'),
-            os.path.join(current_dir, 'fonts', 'msyh.ttc'),
-            os.path.join(current_dir, 'fonts', 'simsun.ttc')
-        ]
-        
-        font_paths = local_font_paths + [
-            'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
-            'C:/Windows/Fonts/simsun.ttc',  # 宋体
-            'C:/Windows/Fonts/simhei.ttf',  # 黑体
-            'C:/Windows/Fonts/simkai.ttf',  # 楷体
-            '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', # Ubuntu/Debian 常用
-            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc' # 其他 Linux
-        ]
-
-        for font_path in font_paths:
-            if os.path.exists(font_path):
-                try:
-                    pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
-                    pdfmetrics.registerFont(TTFont('ChineseFontBold', font_path))
-                    print(f"成功注册字体: {font_path}")
-                    _chinese_font_registered = True
-                    return True
-                except Exception as e:
-                    print(f"尝试注册字体 {font_path} 失败: {e}")
-                    continue
-        
-        print("未找到可用的中文字体，PDF中文可能无法显示")
-        return False
-    except Exception as e:
-        print(f"注册字体出错: {e}")
-        return False
-
-# 初始化时注册字体
-_chinese_font_registered = register_chinese_font()
-
-# 获取中文字体路径（用于图片生成）
-def get_chinese_font_path():
-    """获取可用的中文字体路径（用于PIL）"""
-    # 优先查找当前目录下的fonts文件夹
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    font_paths = [
-        os.path.join(current_dir, 'fonts', 'SimHei.ttf'),
-        os.path.join(current_dir, 'fonts', 'simhei.ttf'),
-        os.path.join(current_dir, 'fonts', 'msyh.ttc'),
-        os.path.join(current_dir, 'fonts', 'simsun.ttc'),
-        'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
-        'C:/Windows/Fonts/simsun.ttc',  # 宋体
-        'C:/Windows/Fonts/simhei.ttf',  # 黑体
-        'C:/Windows/Fonts/simkai.ttf',  # 楷体
-        '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
-        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
-    ]
-    
-    for font_path in font_paths:
-        if os.path.exists(font_path):
-            return font_path
-    return None
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # 初始化数据库
 def init_db():
@@ -192,32 +119,25 @@ def init_db():
                   role TEXT NOT NULL DEFAULT 'user',
                   permissions TEXT,
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-
+    
     # 系统设置表
     c.execute('''CREATE TABLE IF NOT EXISTS system_settings
                  (key TEXT PRIMARY KEY,
                   value TEXT)''')
     
-    # 如果表已存在但没有extra_fields列，则添加该列
-    try:
-        c.execute('ALTER TABLE products ADD COLUMN extra_fields TEXT')
-    except sqlite3.OperationalError:
-        # 列已存在，忽略错误
-        pass
-    
-    # 检查是否需要创建默认管理员
+    # 初始化默认管理员
     try:
         c.execute('SELECT count(*) FROM users')
         if c.fetchone()[0] == 0:
             default_password = generate_password_hash('admin123')
             default_permissions = json.dumps({'can_upload': True, 'can_delete': True})
             c.execute('INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)',
-                     ('admin', default_password, 'admin', default_permissions))
+                      ('admin', default_password, 'admin', default_permissions))
             print("Created default admin user: admin / admin123")
     except sqlite3.IntegrityError:
         # 在多进程启动时，另一个进程可能已经插入了用户，忽略此错误
         pass
-
+    
     # 初始化默认设置
     c.execute('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)', ('allow_registration', 'true'))
     
@@ -270,8 +190,6 @@ def match_pending_image(code):
                 except Exception as e:
                     print(f'移动待匹配图片失败: {e}')
                     return None
-    except Exception as e:
-        print(f'遍历待匹配目录失败: {e}')
     
     return None
 
@@ -312,7 +230,6 @@ def match_existing_image(code):
                 continue
             
             # 检查款号是否匹配（不区分大小写）
-            # 支持两种格式：1) 文件名就是款号 2) 文件名以款号_开头
             if ext in image_extensions:
                 # 检查文件名是否就是款号
                 if file_code.lower() == code.lower():
@@ -320,19 +237,8 @@ def match_existing_image(code):
                 # 检查文件名是否以款号_开头（如：ABC001_20240101.jpg）
                 elif file_code.lower().startswith(code.lower() + '_'):
                     return image_path
-    except Exception as e:
-        print(f'遍历images目录失败: {e}')
     
     return None
-
-# 获取系统设置
-def get_system_setting(key, default=None):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else default
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -400,7 +306,7 @@ def register():
             return jsonify({'error': str(e)}), 500
         finally:
             conn.close()
-            
+        
     return render_template('register.html')
 
 @app.route('/logout')
@@ -681,6 +587,9 @@ def import_excel():
         success_count = 0
         error_messages = []
         
+        # 设置数据库忙碌超时（毫秒）
+        c.execute('PRAGMA busy_timeout = 30000')
+        
         for index, row in df.iterrows():
             code = str(row[code_col]).strip()
             if not code or code == 'nan':
@@ -707,12 +616,24 @@ def import_excel():
             try:
                 c.execute('''INSERT INTO products (code, text_info, image_path, extra_fields)
                              VALUES (?, ?, ?, ?)''',
-                         (code, None, image_path, extra_fields_json))
+                          (code, None, image_path, extra_fields_json))
                 success_count += 1
             except sqlite3.IntegrityError:
                 error_messages.append(f'款号 {code} 已存在，跳过')
+            except sqlite3.OperationalError as e:
+                # 数据库忙时，等待后重试
+                if 'database is locked' in str(e):
+                    c.close()
+                    c = conn.cursor()
+                    c.execute('''INSERT INTO products (code, text_info, image_path, extra_fields)
+                                 VALUES (?, ?, ?, ?)''',
+                              (code, None, image_path, extra_fields_json))
+                    success_count += 1
+                else:
+                    error_messages.append(f'款号 {code} 数据库错误: {str(e)}')
         
         conn.commit()
+        c.close()
         conn.close()
         
         return jsonify({
@@ -823,7 +744,7 @@ def export_product_pdf(code):
         
         # 1. 文本信息块（标题、时间、描述、详细信息）
         info_content = []
-
+        
         # 标题
         info_content.append(Paragraph(f"产品信息：{product[0]}", title_style))
         info_content.append(Spacer(1, 0.2*inch))
@@ -867,7 +788,7 @@ def export_product_pdf(code):
         
         # 将文本信息作为一个整体保持在一起
         story.append(KeepTogether(info_content))
-
+        
         # 2. 产品图片部分（单独块，如果空间不足会自动去下一页）
         if product[2]:
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], product[2])
@@ -1032,10 +953,6 @@ def export_products_pdf_batch():
                     info_content.append(t)
                     info_content.append(Spacer(1, 0.2*inch))
 
-            # 无内容提示 (如果只是没有文本和表格，但有图片，这段不应该显示，需要调整逻辑。或者无内容提示也归入info)
-            if not product['text_info'] and not product['extra_fields'] and not product['image_path']:
-                info_content.append(Paragraph("该产品暂无详细信息", normal_style))
-            
             # 将文本信息作为一个整体
             story.append(KeepTogether(info_content))
 
@@ -1320,568 +1237,124 @@ def list_products():
     # 获取分页参数
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 20, type=int)
+    
+    # 获取总记录数
+    c.execute('SELECT COUNT(*) FROM products')
+    total_count = c.fetchone()[0]
+    
+    # 计算分页
     offset = (page - 1) * page_size
-    
-    # 支持搜索功能
-    search = request.args.get('search', '').strip()
-    
-    # 获取总数
-    if search:
-        c.execute('''SELECT COUNT(*) FROM products 
-                     WHERE code LIKE ? OR text_info LIKE ? OR extra_fields LIKE ?''', 
-                 (f'%{search}%', f'%{search}%', f'%{search}%'))
-    else:
-        c.execute('SELECT COUNT(*) FROM products')
-    
-    total = c.fetchone()[0]
-    
-    # 获取分页数据
-    if search:
-        c.execute('''SELECT code, text_info, image_path, extra_fields, created_at FROM products 
-                     WHERE code LIKE ? OR text_info LIKE ? OR extra_fields LIKE ?
-                     ORDER BY created_at DESC LIMIT ? OFFSET ?''', 
-                 (f'%{search}%', f'%{search}%', f'%{search}%', page_size, offset))
-    else:
-        c.execute('SELECT code, text_info, image_path, extra_fields, created_at FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?',
-                 (page_size, offset))
-    
-    products = c.fetchall()
+    c.execute('SELECT id, code, text_info, image_path, extra_fields, created_at FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?', (page_size, offset))
+    rows = c.fetchall()
     conn.close()
     
-    product_list = []
-    for p in products:
-        # 解析extra_fields
+    products = []
+    for row in rows:
         extra_fields = {}
-        if p[3]:  # extra_fields列
+        if row[4]:  # extra_fields列
             try:
-                extra_fields = json.loads(p[3])
+                extra_fields = json.loads(row[4])
             except (json.JSONDecodeError, TypeError):
                 extra_fields = {}
-        
-        product_list.append({
-            'code': p[0],
-            'text_info': p[1],
-            'image_path': p[2],
+        products.append({
+            'id': row[0],
+            'code': row[1],
+            'text_info': row[2],
+            'image_path': row[3],
             'extra_fields': extra_fields,
-            'created_at': p[4],
-            'view_url': url_for('view_product', code=p[0], _external=True)
+            'created_at': row[5]
         })
     
     return jsonify({
-        'products': product_list,
-        'total': total,
-        'page': page,
-        'page_size': page_size
+        'products': products,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total_count': total_count,
+            'total_pages': (total_count + page_size - 1) // page_size
+        }
     })
 
-@app.route('/api/products/<code>', methods=['GET'])
-@login_required
-def get_product(code):
+# 获取系统设置
+def get_system_setting(key, default=None):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('SELECT code, text_info, image_path, extra_fields, created_at FROM products WHERE code = ?', (code,))
-    product = c.fetchone()
+    c.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
+    row = c.fetchone()
     conn.close()
+    return row[0] if row else default
+
+# 获取中文字体路径（用于图片生成）
+def get_chinese_font_path():
+    """获取可用的中文字体路径（用于PIL）"""
+    # 优先查找当前目录下的fonts文件夹
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    font_paths = [
+        os.path.join(current_dir, 'fonts', 'SimHei.ttf'),
+        os.path.join(current_dir, 'fonts', 'simhei.ttf'),
+        os.path.join(current_dir, 'fonts', 'msyh.ttc'),
+        os.path.join(current_dir, 'fonts', 'simsun.ttc'),
+        'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
+        'C:/Windows/Fonts/simsun.ttc',  # 宋体
+        'C:/Windows/Fonts/simhei.ttf',  # 黑体
+        'C:/Windows/Fonts/simkai.ttf',  # 楷体
+        '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
+    ]
     
-    if not product:
-        return jsonify({'error': '产品不存在'}), 404
-    
-    # 解析extra_fields
-    extra_fields = {}
-    if product[3]:  # extra_fields列
-        try:
-            extra_fields = json.loads(product[3])
-        except (json.JSONDecodeError, TypeError):
-            extra_fields = {}
-    
-    return jsonify({
-        'code': product[0],
-        'text_info': product[1],
-        'image_path': product[2],
-        'extra_fields': extra_fields,
-        'created_at': product[4],
-        'view_url': url_for('view_product', code=product[0], _external=True)
-    })
+    for font_path in font_paths:
+        if os.path.exists(font_path):
+            return font_path
+    return None
 
-@app.route('/api/products/<code>', methods=['PUT'])
-@login_required
-def update_product(code):
-    if not current_user.can_upload: # 修改也是upload权限
-        return jsonify({'error': '无权限执行此操作'}), 403
+# 初始化时注册字体（用于PDF生成）
+_chinese_font_registered = False
+
+def register_chinese_font():
+    """注册中文字体"""
+    global _chinese_font_registered
+    if _chinese_font_registered:
+        return True
+
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+        # 优先查找当前目录下的fonts文件夹
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        local_font_paths = [
+            os.path.join(current_dir, 'fonts', 'SimHei.ttf'),
+            os.path.join(current_dir, 'fonts', 'simhei.ttf'),
+            os.path.join(current_dir, 'fonts', 'msyh.ttc'),
+            os.path.join(current_dir, 'fonts', 'simsun.ttc')
+        ]
         
-        # 检查产品是否存在
-        c.execute('SELECT image_path FROM products WHERE code = ?', (code,))
-        product = c.fetchone()
-        if not product:
-            conn.close()
-            return jsonify({'error': '产品不存在'}), 404
+        font_paths = local_font_paths + [
+            'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
+            'C:/Windows/Fonts/simsun.ttc',  # 宋体
+            'C:/Windows/Fonts/simhei.ttf',  # 黑体
+            'C:/Windows/Fonts/simkai.ttf',  # 楷体
+            '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', # Ubuntu/Debian 常用
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc' # 其他 Linux
+        ]
+
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+                    pdfmetrics.registerFont(TTFont('ChineseFontBold', font_path))
+                    print(f"成功注册字体: {font_path}")
+                    _chinese_font_registered = True
+                    return True
+                except Exception as e:
+                    print(f"尝试注册字体 {font_path} 失败: {e}")
+                    continue
         
-        old_image_path = product[0]
-        text_info = request.form.get('text_info', '').strip()
-        image_path = old_image_path
-        
-        # 处理图片上传
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename and allowed_file(file.filename):
-                # 删除旧图片
-                if old_image_path:
-                    old_filepath = os.path.join(app.config['UPLOAD_FOLDER'], old_image_path)
-                    if os.path.exists(old_filepath):
-                        try:
-                            os.remove(old_filepath)
-                        except Exception as e:
-                            print(f'删除旧图片失败: {e}')
-                
-                # 保存新图片
-                ext = os.path.splitext(file.filename)[1]
-                filename = secure_filename(f"{code}{ext}")
-                # Fallback for non-ascii codes
-                if not filename or filename.startswith('.'):
-                     filename = f"{code}{ext}"
-                     import re
-                     filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'images', filename)
-                file.save(filepath)
-                image_path = f"images/{filename}"
-        
-        # 更新数据库
-        c.execute('''UPDATE products SET text_info = ?, image_path = ? WHERE code = ?''',
-                 (text_info, image_path, code))
-        conn.commit()
-        conn.close()
-        
-        view_url = url_for('view_product', code=code, _external=True)
-        
-        return jsonify({
-            'success': True,
-            'message': '产品更新成功',
-            'code': code,
-            'text_info': text_info,
-            'image_path': image_path,
-            'view_url': view_url
-        }), 200
-        
+        print("未找到可用的中文字体，PDF中文可能无法显示")
+        return False
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"注册字体出错: {e}")
+        return False
 
-@app.route('/api/products', methods=['DELETE'])
-@login_required
-def delete_products():
-    if not current_user.can_delete:
-        return jsonify({'error': '无权限执行此操作'}), 403
-    try:
-        data = request.get_json()
-        if not data or 'codes' not in data:
-            return jsonify({'error': '缺少产品款号列表'}), 400
-        
-        codes = data.get('codes', [])
-        if not codes or not isinstance(codes, list):
-            return jsonify({'error': '产品款号列表格式错误'}), 400
-        
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        
-        deleted_count = 0
-        deleted_codes = []
-        
-        for code in codes:
-            # 获取产品信息，用于删除图片
-            c.execute('SELECT image_path FROM products WHERE code = ?', (code,))
-            product = c.fetchone()
-            
-            if product:
-                # 删除图片文件
-                if product[0]:
-                    image_path = os.path.join(app.config['UPLOAD_FOLDER'], product[0])
-                    if os.path.exists(image_path):
-                        try:
-                            os.remove(image_path)
-                        except Exception as e:
-                            print(f'删除图片失败 {code}: {e}')
-                
-                # 删除数据库记录
-                c.execute('DELETE FROM products WHERE code = ?', (code,))
-                deleted_count += 1
-                deleted_codes.append(code)
-        
-        conn.commit()
-        conn.close()
-        
-        if deleted_count == 0:
-            return jsonify({'error': '没有找到要删除的产品'}), 404
-        
-        message = f'成功删除 {deleted_count} 个产品'
-        if len(codes) > deleted_count:
-            message += f'（共请求删除 {len(codes)} 个）'
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'deleted_count': deleted_count,
-            'deleted_codes': deleted_codes
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'删除失败: {str(e)}'}), 500
-
-@app.route('/api/images/upload', methods=['POST'])
-@login_required
-def upload_images():
-    """批量上传图片，根据文件名自动匹配产品"""
-    if not current_user.can_upload:
-        return jsonify({'error': '无权限执行此操作'}), 403
-    try:
-        if 'images' not in request.files:
-            return jsonify({'error': '未选择文件'}), 400
-        
-        files = request.files.getlist('images')
-        if not files or all(f.filename == '' for f in files):
-            return jsonify({'error': '未选择文件'}), 400
-        
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        
-        matched_count = 0
-        pending_count = 0
-        error_messages = []
-        matched_codes = []
-        
-        for file in files:
-            if not file.filename:
-                continue
-            
-            if not allowed_file(file.filename):
-                error_messages.append(f'{file.filename}: 文件格式不支持')
-                continue
-            
-            # 从文件名提取款号（去掉扩展名）
-            code = extract_code_from_filename(file.filename)
-            if not code:
-                error_messages.append(f'{file.filename}: 无法提取款号')
-                continue
-            
-            # 检查产品是否存在
-            c.execute('SELECT image_path FROM products WHERE code = ?', (code,))
-            product = c.fetchone()
-            
-            if product:
-                # 产品存在，更新图片
-                old_image_path = product[0]
-                
-                # 删除旧图片
-                if old_image_path:
-                    old_filepath = os.path.join(app.config['UPLOAD_FOLDER'], old_image_path)
-                    if os.path.exists(old_filepath):
-                        try:
-                            os.remove(old_filepath)
-                        except Exception as e:
-                            print(f'删除旧图片失败 {code}: {e}')
-                
-                # 保存新图片
-                ext = os.path.splitext(file.filename)[1]
-                if not ext: ext = f".{file.filename.rsplit('.', 1)[1].lower()}" if '.' in file.filename else ''
-                
-                filename = secure_filename(f"{code}{ext}")
-                # Fallback
-                if not filename or filename.startswith('.'):
-                     filename = f"{code}{ext}"
-                     import re
-                     filename = re.sub(r'[\\/*?:"<>|]', "", filename).strip()
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'images', filename)
-                file.save(filepath)
-                image_path = f"images/{filename}"
-                
-                # 更新数据库
-                c.execute('UPDATE products SET image_path = ? WHERE code = ?', (image_path, code))
-                matched_count += 1
-                matched_codes.append(code)
-            else:
-                # 产品不存在，保存到待匹配目录
-                pending_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'pending_images')
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(pending_dir, filename)
-                
-                # 如果已存在同名文件，先删除
-                if os.path.exists(filepath):
-                    try:
-                        os.remove(filepath)
-                    except Exception as e:
-                        print(f'删除旧待匹配图片失败 {filename}: {e}')
-                
-                file.save(filepath)
-                pending_count += 1
-        
-        conn.commit()
-        conn.close()
-        
-        message_parts = []
-        if matched_count > 0:
-            message_parts.append(f'成功匹配并更新 {matched_count} 个产品的图片')
-        if pending_count > 0:
-            message_parts.append(f'{pending_count} 个图片已保存待匹配（产品不存在）')
-        
-        message = '；'.join(message_parts) if message_parts else '处理完成'
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'matched_count': matched_count,
-            'pending_count': pending_count,
-            'matched_codes': matched_codes,
-            'errors': error_messages
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'上传失败: {str(e)}'}), 500
-
-@app.route('/api/images/list', methods=['GET'])
-@login_required
-def list_images():
-    """获取所有图片列表"""
-    try:
-        # 获取分页参数
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 20, type=int)
-        offset = (page - 1) * page_size
-        
-        all_images = []
-        
-        # 定义获取图片信息的辅助函数
-        def scan_directory(dir_name, status_type):
-            dir_path = os.path.join(app.config['UPLOAD_FOLDER'], dir_name)
-            if os.path.exists(dir_path):
-                with os.scandir(dir_path) as entries:
-                    for entry in entries:
-                        if entry.is_file():
-                            try:
-                                stat = entry.stat()
-                                all_images.append({
-                                    'name': entry.name,
-                                    'dir': dir_name,
-                                    'path': f'{dir_name}/{entry.name}',
-                                    'full_path': entry.path,
-                                    'size': stat.st_size,
-                                    'mtime': stat.st_mtime,
-                                    'status': status_type
-                                })
-                            except OSError:
-                                continue
-
-        # 扫描两个目录
-        scan_directory('images', 'matched')
-        scan_directory('pending_images', 'pending')
-        
-        # 按时间倒序排序
-        all_images.sort(key=lambda x: x['mtime'], reverse=True)
-        
-        # 获取总数
-        total = len(all_images)
-        
-        # 分页切片
-        paginated_images = all_images[offset : offset + page_size]
-        
-        # 提取当前页的图片路径，用于查询使用情况
-        page_image_paths = [img['path'] for img in paginated_images]
-        
-        # 检查当前页图片的使用情况
-        image_usage_map = {}
-        if page_image_paths:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            placeholders = ','.join('?' for _ in page_image_paths)
-            c.execute(f'SELECT image_path, code FROM products WHERE image_path IN ({placeholders})', page_image_paths)
-            results = c.fetchall()
-            conn.close()
-            
-            for path, code in results:
-                image_usage_map[path] = code
-        
-        # 构建最终返回列表
-        result_list = []
-        for img in paginated_images:
-            result_list.append({
-                'filename': img['name'],
-                'path': img['path'],
-                'full_path': img['full_path'],
-                'size': img['size'],
-                'created_at': datetime.fromtimestamp(img['mtime']).strftime('%Y-%m-%d %H:%M:%S'),
-                'status': img['status'],
-                'used_by_product': image_usage_map.get(img['path'])
-            })
-        
-        return jsonify({
-            'success': True,
-            'images': result_list,
-            'total': total,
-            'page': page,
-            'page_size': page_size
-        }), 200
-        
-    except Exception as e:
-        import traceback
-        print(f'获取图片列表失败: {str(e)}')
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'error': f'获取图片列表失败: {str(e)}',
-            'images': [],
-            'total': 0
-        }), 500
-
-@app.route('/api/images', methods=['DELETE'])
-@login_required
-def delete_images():
-    """删除图片"""
-    if not current_user.can_delete:
-        return jsonify({'error': '无权限执行此操作'}), 403
-    try:
-        data = request.get_json()
-        if not data or 'paths' not in data:
-            return jsonify({'error': '缺少图片路径列表'}), 400
-        
-        paths = data.get('paths', [])
-        if not paths or not isinstance(paths, list):
-            return jsonify({'error': '图片路径列表格式错误'}), 400
-        
-        deleted_count = 0
-        deleted_paths = []
-        error_messages = []
-        
-        for path in paths:
-            try:
-                # 构建完整路径
-                if path.startswith('images/') or path.startswith('pending_images/'):
-                    full_path = os.path.join(app.config['UPLOAD_FOLDER'], path)
-                else:
-                    full_path = os.path.join(app.config['UPLOAD_FOLDER'], path)
-                
-                if os.path.exists(full_path):
-                    # 检查是否被产品使用
-                    conn = sqlite3.connect(DB_PATH)
-                    c = conn.cursor()
-                    c.execute('SELECT code FROM products WHERE image_path = ?', (path,))
-                    product = c.fetchone()
-                    conn.close()
-                    
-                    if product:
-                        # 如果被产品使用，同时更新数据库
-                        conn = sqlite3.connect(DB_PATH)
-                        c = conn.cursor()
-                        c.execute('UPDATE products SET image_path = NULL WHERE image_path = ?', (path,))
-                        conn.commit()
-                        conn.close()
-                    
-                    # 删除文件
-                    os.remove(full_path)
-                    deleted_count += 1
-                    deleted_paths.append(path)
-                else:
-                    error_messages.append(f'文件不存在: {path}')
-            except Exception as e:
-                error_messages.append(f'删除失败 {path}: {str(e)}')
-        
-        if deleted_count == 0:
-            return jsonify({'error': '没有成功删除任何图片'}), 404
-        
-        message = f'成功删除 {deleted_count} 个图片'
-        if len(paths) > deleted_count:
-            message += f'（共请求删除 {len(paths)} 个）'
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'deleted_count': deleted_count,
-            'deleted_paths': deleted_paths,
-            'errors': error_messages
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'删除失败: {str(e)}'}), 500
-
-@app.route('/api/products/all', methods=['DELETE'])
-@login_required
-def delete_all_products():
-    if not current_user.can_delete:
-        return jsonify({'error': '无权限执行此操作'}), 403
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        
-        # 获取所有产品图片路径
-        c.execute('SELECT image_path FROM products WHERE image_path IS NOT NULL')
-        rows = c.fetchall()
-        
-        deleted_images_count = 0
-        for row in rows:
-            image_path = row[0]
-            if image_path:
-                full_path = os.path.join(app.config['UPLOAD_FOLDER'], image_path)
-                if os.path.exists(full_path):
-                    try:
-                        os.remove(full_path)
-                        deleted_images_count += 1
-                    except Exception as e:
-                        print(f'删除图片失败: {e}')
-
-        # 删除所有产品记录
-        c.execute('DELETE FROM products')
-        deleted_products_count = c.rowcount
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'message': f'成功删除所有产品（共 {deleted_products_count} 个），并清理了 {deleted_images_count} 张关联图片',
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'删除失败: {str(e)}'}), 500
-
-@app.route('/api/images/all', methods=['DELETE'])
-@login_required
-def delete_all_images():
-    if not current_user.can_delete:
-        return jsonify({'error': '无权限执行此操作'}), 403
-    try:
-        # 1. 扫描并删除所有图片文件
-        deleted_count = 0
-        
-        # 定义要清理的目录
-        dirs_to_clean = ['images', 'pending_images']
-        
-        for dir_name in dirs_to_clean:
-            dir_path = os.path.join(app.config['UPLOAD_FOLDER'], dir_name)
-            if os.path.exists(dir_path):
-                for filename in os.listdir(dir_path):
-                    file_path = os.path.join(dir_path, filename)
-                    if os.path.isfile(file_path):
-                        try:
-                            os.remove(file_path)
-                            deleted_count += 1
-                        except Exception as e:
-                            print(f'删除文件失败 {file_path}: {e}')
-        
-        # 2. 更新数据库，清空所有image_path
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('UPDATE products SET image_path = NULL')
-        updated_products_count = c.rowcount
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'message': f'成功删除所有图片（共 {deleted_count} 个），并更新了 {updated_products_count} 个产品的图片关联',
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'删除失败: {str(e)}'}), 500
+# 初始化时注册字体
+_chinese_font_registered = register_chinese_font()
 
 if __name__ == '__main__':
-    init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=False)
