@@ -241,6 +241,9 @@ def match_existing_image(code):
                 elif file_code.lower().startswith(code.lower() + '_'):
                     return image_path
     
+    except Exception as e:
+        print(f'遍历images目录失败: {e}')
+    
     return None
 
 @app.route('/login', methods=['GET', 'POST'])
