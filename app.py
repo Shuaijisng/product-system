@@ -24,11 +24,13 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'products.db')
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+# 上传目录放到 data 下面，方便只挂载一个 Volume
+app.config['DATA_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+app.config['UPLOAD_FOLDER'] = os.path.join(app.config['DATA_FOLDER'], 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'xlsx', 'xls'}
-app.config['EXPORT_FOLDER'] = 'exports'
-app.secret_key = 'dev_secret_key_change_in_production'  # 需要设置 secret_key 用于 session
+app.config['EXPORT_FOLDER'] = os.path.join(app.config['DATA_FOLDER'], 'exports')
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_change_in_production')
 
 # 初始化 Flask-Login
 login_manager = LoginManager()
@@ -91,12 +93,12 @@ def load_user(user_id):
         return User(id=user_data[0], username=user_data[1], role=user_data[2], permissions=permissions)
     return None
 
-# 确保上传目录存在
+# 确保所有必要目录存在（都在 data 目录下）
+os.makedirs(app.config['DATA_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'images'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'pending_images'), exist_ok=True)
 os.makedirs(app.config['EXPORT_FOLDER'], exist_ok=True)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # 注册中文字体（用于PDF生成）
 _chinese_font_registered = False
